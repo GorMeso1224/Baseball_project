@@ -1,0 +1,88 @@
+---
+title: "baseballr2"
+output: pdf_document
+date: "2026-06-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+
+head(baseball_data)
+```
+
+```{r}
+# Filtering out data that does not have estimated/expected (xBA) batting average values
+
+baseball_data <- rename(baseball_data, xBA = estimated_ba_using_speedangle)
+ xBA_baseball_data <- baseball_data |>
+   filter(!is.na(xBA))
+
+# Creating a new column that displays TRUE if the event was a hit, FALSE otherwise
+xBA_baseball_data$is_hit <- xBA_baseball_data$events %in% hit_events
+  
+# Summarizing the aggregated xBA versus actual BA for 2015-2025
+xBA_BA_summary <- xBA_baseball_data |>
+  group_by(game_year) |>
+  summarize(expected_batting_average = round(mean(xBA), 4), 
+            actual_batting_average = round(mean(is_hit), 4),
+            # Adding an actual BA minus xBA statistic for each year
+            actual_minus_expected = actual_batting_average - expected_batting_average) |>
+  # Combining xBA and actual BA into one column for data visualization
+  pivot_longer(
+    cols = c(expected_batting_average, actual_batting_average),
+    names_to = "BA_Type", 
+    values_to = "BA"
+  )
+
+xBA_BA_summary
+```
+
+```{r}
+# Five number summary for the actual_minus_expected BA values
+delta_summary <- summary(xBA_BA_summary$actual_minus_expected)
+delta_summary
+
+# Checking for statistical outlier actual_minus_expected data
+Q1 <- delta_summary[2]; Q3 <- delta_summary[5]
+outlier_lower_bound <- Q1 - 1.5 * (Q3 - Q1)
+outlier_lower_bound
+
+# Filtering out the 2020 outlying actual_minus_expected statistic
+xBA_BA_summary <- xBA_BA_summary |>
+  filter(game_year != 2020)
+  
+# Plotting the two types of batting averages against the year
+xBA_BA_plot <- ggplot(xBA_BA_summary, aes(x = as.factor(game_year), y = BA, color = BA_Type, group = BA_Type)) +
+  geom_line() +
+  labs(title = "MLB Actual vs Expected Batting Average (2015-2025)",
+       x = "Season", 
+       y = "Batting Average",
+       color = "Batting Average Type") +
+  # Renaming the color labels
+  scale_color_discrete(labels = c("Actual Batting Average", "Expected Batting Average")) +
+  theme_classic()
+
+xBA_BA_plot
+```
+
+```{r}
+# Plotting the actual_minus_expected BA values for each year, less 2020
+delta_BA_plot <- ggplot(xBA_BA_summary, aes(x = as.factor(game_year), y = actual_minus_expected)) +
+  # Creating a bar chart
+  geom_col(fill = "salmon", color = "salmon") +
+  labs(title = "MLB Actual Batting Average minus xBA (2015-2025)",
+       x = "Season",
+       y = "Actual BA - xBA",) +
+  theme_classic()
+delta_BA_plot
+```
+```{r}
+# Computing linear regression statistics on actual_minus_expected BA versus year
+delta_BA_linear_regression <- lm(actual_minus_expected ~ game_year, data = xBA_BA_summary)
+summary(delta_BA_linear_regression)
+```
+

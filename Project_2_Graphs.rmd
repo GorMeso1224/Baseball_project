@@ -1,0 +1,158 @@
+---
+title: "Project_2_Graphs"
+author: "Gor Mesropian (UID 806595137)"
+date: "2026-06-02"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading Data In 
+```{r}
+BBstats <- read.csv("statcast_data.csv")
+library(tidyverse)
+#Currently Data is WAYYY to large to parse through so im going to filter for year 2015 and onward 
+
+BBstats <- BBstats %>% filter(game_year >= 2015) 
+head(BBstats)
+str(BBstats)
+```
+
+
+
+Frequency Chart of pitch types for the last 10 years. (most frequent pitches in 2015 all the way up to 2025) 
+```{r}
+BBstats1 <- BBstats %>% filter(game_type %in% c("R", "D", "L", "W")) %>% 
+  filter(pitch_name %in% c("Slurve" , "Knuckle Curve", "Split-Finger", "Curveball" , "Cutter" , "Sweeper", "Changeup" , "Slider" , "Sinker", "4-Seam Fastball")) %>% 
+  filter(game_year %in% c(2015, 2018, 2021, 2023, 2025)) %>%
+  group_by(game_year, pitch_name) %>%
+  summarise(count = n(), .groups = "drop")
+
+# Using a function to build a plot for every year instead of doing facet wrap because its easier to view this way 
+pitch_freq_plot <- function(data, year) {
+  data %>%
+    filter(game_year == year) %>%
+    mutate(pitch_name = reorder(pitch_name, -count)) %>%
+    ggplot(aes(x = pitch_name, y = count, fill = pitch_name)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    theme_classic() + 
+    theme(
+      axis.text.y = element_text(size = 9),  # y instead of x now
+      axis.text.x = element_text(size = 9),
+      legend.position = "none",
+      axis.title = element_text(face = "bold"),
+      plot.title = element_text(face = "bold", size = 13)
+    ) +
+    labs(
+      title = paste("Pitch Type Frequency —", year),
+      x = "Pitch Type",
+      y = "Count"
+    )
+}
+
+plot_2015 <- pitch_freq_plot(BBstats1, 2015)
+plot_2018 <- pitch_freq_plot(BBstats1, 2018)
+plot_2021 <- pitch_freq_plot(BBstats1, 2021)
+plot_2023 <- pitch_freq_plot(BBstats1, 2023)
+plot_2025 <- pitch_freq_plot(BBstats1, 2025)
+plot_2015
+plot_2018
+plot_2021
+plot_2023
+plot_2025
+
+```
+
+
+Build a Breaking ball vector then calculate the magnitude and observe its changes over the last 10 years 
+```{r}
+BBstats_break <- BBstats %>% 
+  filter(game_type %in% c("R", "D", "L", "W")) %>%
+  filter(!is.na(api_break_x_arm), !is.na(api_break_z_with_gravity)) %>%
+  mutate(break_magnitude = sqrt(api_break_x_arm^2 + api_break_z_with_gravity^2)) %>%
+  group_by(game_year) %>%
+  summarise(avg_break = mean(break_magnitude), .groups = "drop")
+  
+ggplot(BBstats_break, aes(x = game_year, y = avg_break)) +
+  geom_line(linewidth = 1.2, color = "steelblue") +
+  geom_point(size = 3, color = "steelblue") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 13)
+  ) +
+  scale_x_continuous(breaks = seq(2015, 2025, by = 1)) +
+  labs(
+    title = "Average Pitch Break Magnitude (2015–2025)",
+    x = "Year",
+    y = "Avg Break Magnitude (ft)"
+  )
+
+cor.test(BBstats_break$game_year, BBstats_break$avg_break)
+#p-value = 0.06358
+# 95 percent confidence interval: -0.03626334 - 0.87396465
+# cor = 0.5761448
+
+
+
+```
+
+
+
+Batting Average vs Launch Angle ? (Run Statistical Test, What type of correlation)?
+The higher people hit the ball vs how sucessful they are 
+what we expect --> people hit the ball higher and will have a lower batting average, this is because in recent years more hitters have beeing going for a home run or bust mentality, this means that they prob hit more home runs but also have a lower batting average. How can I calcualte this change over the years. 
+
+
+```{r}
+BBstats_angle <- BBstats %>%
+  filter(game_type %in% c("R", "D", "L", "W")) %>%
+  filter(!is.na(launch_angle), !is.na(estimated_ba_using_speedangle)) %>%
+  group_by(game_year) %>%
+  summarise(
+    avg_launch_angle = mean(launch_angle),
+    avg_xba = mean(estimated_ba_using_speedangle),
+    .groups = "drop"
+  )
+
+ggplot(BBstats_angle, aes(x = game_year)) +
+  geom_line(aes(y = avg_launch_angle, color = "Avg Launch Angle"), linewidth = 1.2) +
+  geom_point(aes(y = avg_launch_angle, color = "Avg Launch Angle"), size = 3) +
+  geom_line(aes(y = avg_xba * 100, color = "Avg xBA (scaled)"), linewidth = 1.2) +
+  geom_point(aes(y = avg_xba * 100, color = "Avg xBA (scaled)"), size = 3) +
+  scale_y_continuous(
+    name = "Avg Launch Angle (degrees)",
+    sec.axis = sec_axis(~ . / 100, name = "Avg xBA")
+  ) +
+  scale_x_continuous(breaks = seq(2015, 2025, by = 1)) +
+  scale_color_manual(values = c("Avg Launch Angle" = "steelblue", "Avg xBA (scaled)" = "tomato")) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 13),
+    legend.title = element_blank()
+  ) +
+  labs(title = "Launch Angle vs Expected Batting Average (2015–2025)",
+       x = "Year")
+
+
+BBstats_raw <- BBstats %>%
+  filter(game_type %in% c("R", "D", "L", "W")) %>%
+  filter(!is.na(launch_angle), !is.na(estimated_ba_using_speedangle))
+cor.test(BBstats_raw$launch_angle, BBstats_raw$estimated_ba_using_speedangle)
+
+
+```
+
+r = -0.0236 — negative direction, confirming your hypothesis directionally
+p < 2.2e-16 — essentially zero, statistically bulletproof with 1.28 million observations
+95% CI: (-0.0253, -0.0219) — extremely tight, meaning this negative relationship is real and not noise
+
+The conclusion:
+Your hypothesis was directionally correct but practically weak. Higher launch angle does correlate with lower xBA, but the effect is tiny. An r of -0.024 means launch angle explains less than 0.1% of the variance in xBA (r² = 0.00056). So while the negative relationship is 100% statistically real, launch angle alone is almost useless as a predictor of batting average on any individual ball.
+Why this makes baseball sense:
+xBA is driven much more strongly by exit velocity than launch angle. A ball hit at 110 mph at 25° is a no-doubter. A ball hit at 65 mph at 25° is an easy flyout. The launch angle effect you're detecting is real but gets completely swamped by how hard the ball was hit.
+The better test of your hypothesis would be to filter to only balls in play and correlate launch angle with actual batting average grouped by launch angle buckets — that would show the classic inverted U-shape where 10-25° produces the best outcomes and anything above 35° tanks.

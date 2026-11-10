@@ -1,0 +1,45 @@
+---
+title: "Project_Q6"
+output: pdf_document
+date: "2026-06-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Filtering out data that does not include launch speed and launch angle
+batted_ball_data <- xBA_baseball_data |>
+  filter(!is.na(launch_speed) & !is.na(launch_angle))
+
+# Creating a heatmap for launch angle versus launch speed, colored based off proportion of base hits per unit of area
+batted_ball_heatmap <- ggplot(batted_ball_data, aes(x = launch_speed, y = launch_angle, z = as.numeric(is_hit))) +
+  # Sizing each unit of area to be 2mph of launch speed by 5 degrees of launch angle
+  stat_summary_2d(fun = mean, binwidth = c(2, 5)) +
+  scale_fill_gradientn(
+    colors = c("lightyellow", "orange", "red"),
+    name = "Base Hit Rate"
+  ) + 
+  # Adjusting coordinates to exclude outlier values
+  coord_cartesian(xlim = c(50, 120), ylim = c(-40, 60)) +
+  labs(
+    title = "Base Hit Rate by Exit Velocity and Launch Angle",
+    x = "Exit Velocity (mph)",
+    y = "Launch Angle (Degrees)"
+  ) +
+  theme_classic() +
+  theme(
+    panel.grid.minor = element_blank() # Removes minor gridlines for a cleaner look
+  )
+batted_ball_heatmap
+```
+
+```{r}
+# Computing generalized linear regression statistics on batting average versus year
+batted_ball_model <- glm(as.numeric(is_hit) ~ launch_speed + launch_angle + I(launch_angle^2), 
+                 data = batted_ball_data, 
+                 family = "binomial")
+summary(batted_ball_model)
+```
+

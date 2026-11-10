@@ -1,0 +1,377 @@
+---
+title: "Group23_BrysonD_GorM"
+author: "Gor Mesropian (UID 806595137)"
+date: "2026-06-09"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading Data In 
+```{r}
+BBstats <- read.csv("statcast_data.csv")
+library(tidyverse)
+#Currently Data is WAYYY to large to parse through so im going to filter for year 2015 and onward 
+
+BBstats <- BBstats %>% filter(game_year >= 2015) 
+head(BBstats)
+str(BBstats)
+```
+
+
+
+Frequency Chart of pitch types for the last 10 years. (most frequent pitches in 2015 all the way up to 2025) 
+```{r}
+BBstats1 <- BBstats %>% filter(game_type %in% c("R", "D", "L", "W")) %>% 
+  filter(pitch_name %in% c("Slurve" , "Knuckle Curve", "Split-Finger", "Curveball" , "Cutter" , "Sweeper", "Changeup" , "Slider" , "Sinker", "4-Seam Fastball")) %>% 
+  filter(game_year %in% c(2015, 2018, 2021, 2023, 2025)) %>%
+  group_by(game_year, pitch_name) %>%
+  summarise(count = n(), .groups = "drop")
+
+# Using a function to build a plot for every year instead of doing facet wrap because its easier to view this way 
+pitch_freq_plot <- function(data, year) {
+  data %>%
+    filter(game_year == year) %>%
+    mutate(pitch_name = reorder(pitch_name, -count)) %>%
+    ggplot(aes(x = pitch_name, y = count, fill = pitch_name)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    theme_classic() + 
+    theme(
+      axis.text.y = element_text(size = 9),  # y instead of x now
+      axis.text.x = element_text(size = 9),
+      legend.position = "none",
+      axis.title = element_text(face = "bold"),
+      plot.title = element_text(face = "bold", size = 13)
+    ) +
+    labs(
+      title = paste("Pitch Type Frequency —", year),
+      x = "Pitch Type",
+      y = "Count"
+    )
+}
+
+plot_2015 <- pitch_freq_plot(BBstats1, 2015)
+plot_2018 <- pitch_freq_plot(BBstats1, 2018)
+plot_2021 <- pitch_freq_plot(BBstats1, 2021)
+plot_2023 <- pitch_freq_plot(BBstats1, 2023)
+plot_2025 <- pitch_freq_plot(BBstats1, 2025)
+plot_2015
+plot_2018
+plot_2021
+plot_2023
+plot_2025
+
+```
+
+
+Build a Breaking ball vector then calculate the magnitude and observe its changes over the last 10 years 
+```{r}
+BBstats_break <- BBstats %>% 
+  filter(game_type %in% c("R", "D", "L", "W")) %>%
+  filter(!is.na(api_break_x_arm), !is.na(api_break_z_with_gravity)) %>%
+  mutate(break_magnitude = sqrt(api_break_x_arm^2 + api_break_z_with_gravity^2)) %>%
+  group_by(game_year) %>%
+  summarise(avg_break = mean(break_magnitude), .groups = "drop")
+  
+ggplot(BBstats_break, aes(x = game_year, y = avg_break)) +
+  geom_line(linewidth = 1.2, color = "steelblue") +
+  geom_point(size = 3, color = "steelblue") +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 13)
+  ) +
+  scale_x_continuous(breaks = seq(2015, 2025, by = 1)) +
+  labs(
+    title = "Average Pitch Break Magnitude (2015–2025)",
+    x = "Year",
+    y = "Avg Break Magnitude (ft)"
+  )
+
+cor.test(BBstats_break$game_year, BBstats_break$avg_break)
+#p-value = 0.06358
+# 95 percent confidence interval: -0.03626334 - 0.87396465
+# cor = 0.5761448
+
+
+
+```
+
+
+
+Batting Average vs Launch Angle ? (Run Statistical Test, What type of correlation)?
+The higher people hit the ball vs how sucessful they are 
+what we expect --> people hit the ball higher and will have a lower batting average, this is because in recent years more hitters have beeing going for a home run or bust mentality, this means that they prob hit more home runs but also have a lower batting average. How can I calcualte this change over the years. 
+
+
+```{r}
+BBstats_angle <- BBstats %>%
+  filter(game_type %in% c("R", "D", "L", "W")) %>%
+  filter(!is.na(launch_angle), !is.na(estimated_ba_using_speedangle)) %>%
+  group_by(game_year) %>%
+  summarise(
+    avg_launch_angle = mean(launch_angle),
+    avg_xba = mean(estimated_ba_using_speedangle),
+    .groups = "drop"
+  )
+
+ggplot(BBstats_angle, aes(x = game_year)) +
+  geom_line(aes(y = avg_launch_angle, color = "Avg Launch Angle"), linewidth = 1.2) +
+  geom_point(aes(y = avg_launch_angle, color = "Avg Launch Angle"), size = 3) +
+  geom_line(aes(y = avg_xba * 100, color = "Avg xBA (scaled)"), linewidth = 1.2) +
+  geom_point(aes(y = avg_xba * 100, color = "Avg xBA (scaled)"), size = 3) +
+  scale_y_continuous(
+    name = "Avg Launch Angle (degrees)",
+    sec.axis = sec_axis(~ . / 100, name = "Avg xBA")
+  ) +
+  scale_x_continuous(breaks = seq(2015, 2025, by = 1)) +
+  scale_color_manual(values = c("Avg Launch Angle" = "steelblue", "Avg xBA (scaled)" = "tomato")) +
+  theme_minimal() +
+  theme(
+    axis.title = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 13),
+    legend.title = element_blank()
+  ) +
+  labs(title = "Launch Angle vs Expected Batting Average (2015–2025)",
+       x = "Year")
+
+
+BBstats_raw <- BBstats %>%
+  filter(game_type %in% c("R", "D", "L", "W")) %>%
+  filter(!is.na(launch_angle), !is.na(estimated_ba_using_speedangle))
+cor.test(BBstats_raw$launch_angle, BBstats_raw$estimated_ba_using_speedangle)
+
+
+```
+
+r = -0.0236 — negative direction, confirming your hypothesis directionally
+p < 2.2e-16 — essentially zero, statistically bulletproof with 1.28 million observations
+95% CI: (-0.0253, -0.0219) — extremely tight, meaning this negative relationship is real and not noise
+
+
+
+```{r}
+library(tidyverse)
+
+baseball_data <- read.csv("statcast_data.csv")
+head(baseball_data)
+```
+
+```{r}
+# Extract the types of events that have occurred and been recorded over the past 10 years
+list_of_events <- unique(baseball_data$events)
+list_of_events
+
+# Create a vector of hit events
+hit_events <- c("single", "double", "triple", "home_run")
+
+# Create a vector of non-AB events (don't count towards batting average)
+non_ab_events <- c("walk", "intent_walk", "hit_by_pitch", "sac_fly", "sac_bunt", 
+                   "sac_bunt_double_play", "sac_fly_double_play", "truncated_pa",
+                   "catcher_interf", "game_advisory", "ejection")
+
+# Subsetting data to only include regular season and playoff games
+game_types <- unique(baseball_data$game_type)
+game_types
+
+# Vector of only regular season and playoff game types
+reg_playoff <- c("R", "D", "L", "W")
+
+# Subsetting data to only include regular season and playoff games
+baseball_data <- baseball_data |>
+  filter(game_type %in% reg_playoff)
+```
+
+```{r}
+# Creating a dataset with only PAs that count as ABs
+AB_only_data <- baseball_data |>
+  # Filtering out events that do not count as an AB
+  filter(!(events %in% non_ab_events))
+
+# Creating a summary of aggregated batting average per year
+BA_overall_summary <- AB_only_data |>
+  group_by(game_year) |>
+  # Calculate each year's average batting average
+  summarize(batting_average = mean(events %in% hit_events) |> round(digits = 4))
+
+BA_overall_summary
+
+# Creating a scatter plot of overall batting average versus year
+BA_overall_plot <- ggplot(BA_overall_summary, aes(x = game_year, y = batting_average)) +
+  # Plotting the points
+  geom_point(color = "salmon", size = 2) + 
+  # Plotting a line of best fit
+  geom_smooth(size = 0.4, method = "lm", se = FALSE, color = "grey") +
+  # Forcing the x-axis into one-year breaks
+  scale_x_continuous(breaks = 2015:2025) +
+  labs(title = "MLB Batting Average (2015-2025)",
+       x = "Season",
+       y = "Batting Average") +
+  theme_classic()
+
+BA_overall_plot
+```
+
+```{r}
+# Computing linear regression statistics on batting average versus year
+BA_linear_regression <- lm(batting_average ~ game_year, data = BA_overall_summary)
+summary(BA_linear_regression)
+```
+
+```{r}
+# Analyzing all types of pitches in the AB only data
+unique(AB_only_data$pitch_name)
+
+# Deducing the total number of pitches/proportion of each type from 2015-2025
+pitch_count <- AB_only_data |>
+  group_by(pitch_name) |>
+  summarize(total = n(), prop = round(n()/nrow(AB_only_data), 3)) |>
+  # Arranging in order from most common to least common pitch types
+  arrange(desc(total))
+
+print(pitch_count)
+
+# Deducing the total percentage of pitches thrown that the 
+# six most common pitches make up
+common_pitches_prop <- sum(pitch_count$prop[1:6])
+common_pitches_prop
+
+# Creating a vector of the six most common pitch types
+desired_pitches <- c()
+for(i in 1:6){
+  desired_pitches[i] <- pitch_count$pitch_name[i]
+}
+```
+
+```{r}
+# Creating a summary of batting average per pitch per year
+BA_by_pitch_summary <- AB_only_data |>
+  # Choosing the desired (six most common) pitches
+  filter(pitch_name %in% desired_pitches) |>
+  group_by(game_year, pitch_name) |>
+  # Calculating/summarizing the batting average per pitch type
+  summarize(batting_average = mean(events %in% hit_events) |> round(digits = 4))
+
+BA_by_pitch_summary
+
+# Plotting the batting average per pitch type
+ggplot(BA_by_pitch_summary, aes(x = game_year, y = batting_average, color = pitch_name)) +
+  geom_point(size = 1.5) + 
+  scale_x_continuous(breaks = 2015:2025) +
+  geom_smooth(size = 0.6, method = "lm", se = FALSE) +
+  labs(title = "MLB Batting Average by Pitch Type (2015-2025)",
+       x = "Season",
+       y = "Batting Average",
+       color = "Pitch Type") +
+  theme_classic()
+```
+
+```{r}
+# Filtering out data that does not have estimated/expected (xBA) batting average values
+
+baseball_data <- rename(baseball_data, xBA = estimated_ba_using_speedangle)
+ xBA_baseball_data <- baseball_data |>
+   filter(!is.na(xBA))
+
+# Creating a new column that displays TRUE if the event was a hit, FALSE otherwise
+xBA_baseball_data$is_hit <- xBA_baseball_data$events %in% hit_events
+  
+# Summarizing the aggregated xBA versus actual BA for 2015-2025
+xBA_BA_summary <- xBA_baseball_data |>
+  group_by(game_year) |>
+  summarize(expected_batting_average = round(mean(xBA), 4), 
+            actual_batting_average = round(mean(is_hit), 4),
+            # Adding an actual BA minus xBA statistic for each year
+            actual_minus_expected = actual_batting_average - expected_batting_average) |>
+  # Combining xBA and actual BA into one column for data visualization
+  pivot_longer(
+    cols = c(expected_batting_average, actual_batting_average),
+    names_to = "BA_Type", 
+    values_to = "BA"
+  )
+
+xBA_BA_summary
+```
+
+```{r}
+# Five number summary for the actual_minus_expected BA values
+delta_summary <- summary(xBA_BA_summary$actual_minus_expected)
+delta_summary
+
+# Checking for statistical outlier actual_minus_expected data
+Q1 <- delta_summary[2]; Q3 <- delta_summary[5]
+outlier_lower_bound <- Q1 - 1.5 * (Q3 - Q1)
+outlier_lower_bound
+
+# Filtering out the 2020 outlying actual_minus_expected statistic
+xBA_BA_summary <- xBA_BA_summary |>
+  filter(game_year != 2020)
+  
+# Plotting the two types of batting averages against the year
+xBA_BA_plot <- ggplot(xBA_BA_summary, aes(x = as.factor(game_year), y = BA, color = BA_Type, group = BA_Type)) +
+  geom_line() +
+  labs(title = "MLB Actual vs Expected Batting Average (2015-2025)",
+       x = "Season", 
+       y = "Batting Average",
+       color = "Batting Average Type") +
+  # Renaming the color labels
+  scale_color_discrete(labels = c("Actual Batting Average", "Expected Batting Average")) +
+  theme_classic()
+
+xBA_BA_plot
+```
+
+```{r}
+# Plotting the actual_minus_expected BA values for each year, less 2020
+delta_BA_plot <- ggplot(xBA_BA_summary, aes(x = as.factor(game_year), y = actual_minus_expected)) +
+  # Creating a bar chart
+  geom_col(fill = "salmon", color = "salmon") +
+  labs(title = "MLB Actual Batting Average minus xBA (2015-2025)",
+       x = "Season",
+       y = "Actual BA - xBA",) +
+  theme_classic()
+delta_BA_plot
+```
+```{r}
+# Computing linear regression statistics on actual_minus_expected BA versus year
+delta_BA_linear_regression <- lm(actual_minus_expected ~ game_year, data = xBA_BA_summary)
+summary(delta_BA_linear_regression)
+```
+
+```{r}
+# Filtering out data that does not include launch speed and launch angle
+batted_ball_data <- xBA_baseball_data |>
+  filter(!is.na(launch_speed) & !is.na(launch_angle))
+
+# Creating a heatmap for launch angle versus launch speed, colored based off proportion of base hits per unit of area
+batted_ball_heatmap <- ggplot(batted_ball_data, aes(x = launch_speed, y = launch_angle, z = as.numeric(is_hit))) +
+  # Sizing each unit of area to be 2mph of launch speed by 5 degrees of launch angle
+  stat_summary_2d(fun = mean, binwidth = c(2, 5)) +
+  scale_fill_gradientn(
+    colors = c("lightyellow", "orange", "red"),
+    name = "Base Hit Rate"
+  ) + 
+  # Adjusting coordinates to exclude outlier values
+  coord_cartesian(xlim = c(50, 120), ylim = c(-40, 60)) +
+  labs(
+    title = "Base Hit Rate by Exit Velocity and Launch Angle",
+    x = "Exit Velocity (mph)",
+    y = "Launch Angle (Degrees)"
+  ) +
+  theme_classic() +
+  theme(
+    panel.grid.minor = element_blank() # Removes minor gridlines for a cleaner look
+  )
+batted_ball_heatmap
+```
+
+```{r}
+# Computing generalized linear regression statistics on batting average versus year
+batted_ball_model <- glm(as.numeric(is_hit) ~ launch_speed + launch_angle + I(launch_angle^2), 
+                 data = batted_ball_data, 
+                 family = "binomial")
+summary(batted_ball_model)
+```

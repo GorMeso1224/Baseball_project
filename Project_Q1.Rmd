@@ -1,0 +1,125 @@
+---
+title: "baseballr"
+output: pdf_document
+date: "2026-06-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+
+baseball_data <- read.csv("statcast_data.csv")
+head(baseball_data)
+```
+
+```{r}
+# Extract the types of events that have occurred and been recorded over the past 10 years
+list_of_events <- unique(baseball_data$events)
+list_of_events
+
+# Create a vector of hit events
+hit_events <- c("single", "double", "triple", "home_run")
+
+# Create a vector of non-AB events (don't count towards batting average)
+non_ab_events <- c("walk", "intent_walk", "hit_by_pitch", "sac_fly", "sac_bunt", 
+                   "sac_bunt_double_play", "sac_fly_double_play", "truncated_pa",
+                   "catcher_interf", "game_advisory", "ejection")
+
+# Subsetting data to only include regular season and playoff games
+game_types <- unique(baseball_data$game_type)
+game_types
+
+# Vector of only regular season and playoff game types
+reg_playoff <- c("R", "D", "L", "W")
+
+# Subsetting data to only include regular season and playoff games
+baseball_data <- baseball_data |>
+  filter(game_type %in% reg_playoff)
+```
+
+```{r}
+# Creating a dataset with only PAs that count as ABs
+AB_only_data <- baseball_data |>
+  # Filtering out events that do not count as an AB
+  filter(!(events %in% non_ab_events))
+
+# Creating a summary of aggregated batting average per year
+BA_overall_summary <- AB_only_data |>
+  group_by(game_year) |>
+  # Calculate each year's average batting average
+  summarize(batting_average = mean(events %in% hit_events) |> round(digits = 4))
+
+BA_overall_summary
+
+# Creating a scatter plot of overall batting average versus year
+BA_overall_plot <- ggplot(BA_overall_summary, aes(x = game_year, y = batting_average)) +
+  # Plotting the points
+  geom_point(color = "salmon", size = 2) + 
+  # Plotting a line of best fit
+  geom_smooth(size = 0.4, method = "lm", se = FALSE, color = "grey") +
+  # Forcing the x-axis into one-year breaks
+  scale_x_continuous(breaks = 2015:2025) +
+  labs(title = "MLB Batting Average (2015-2025)",
+       x = "Season",
+       y = "Batting Average") +
+  theme_classic()
+
+BA_overall_plot
+```
+
+```{r}
+# Computing linear regression statistics on batting average versus year
+BA_linear_regression <- lm(batting_average ~ game_year, data = BA_overall_summary)
+summary(BA_linear_regression)
+```
+
+```{r}
+# Analyzing all types of pitches in the AB only data
+unique(AB_only_data$pitch_name)
+
+# Deducing the total number of pitches/proportion of each type from 2015-2025
+pitch_count <- AB_only_data |>
+  group_by(pitch_name) |>
+  summarize(total = n(), prop = round(n()/nrow(AB_only_data), 3)) |>
+  # Arranging in order from most common to least common pitch types
+  arrange(desc(total))
+
+print(pitch_count)
+
+# Deducing the total percentage of pitches thrown that the 
+# six most common pitches make up
+common_pitches_prop <- sum(pitch_count$prop[1:6])
+common_pitches_prop
+
+# Creating a vector of the six most common pitch types
+desired_pitches <- c()
+for(i in 1:6){
+  desired_pitches[i] <- pitch_count$pitch_name[i]
+}
+```
+
+```{r}
+# Creating a summary of batting average per pitch per year
+BA_by_pitch_summary <- AB_only_data |>
+  # Choosing the desired (six most common) pitches
+  filter(pitch_name %in% desired_pitches) |>
+  group_by(game_year, pitch_name) |>
+  # Calculating/summarizing the batting average per pitch type
+  summarize(batting_average = mean(events %in% hit_events) |> round(digits = 4))
+
+BA_by_pitch_summary
+
+# Plotting the batting average per pitch type
+ggplot(BA_by_pitch_summary, aes(x = game_year, y = batting_average, color = pitch_name)) +
+  geom_point(size = 1.5) + 
+  scale_x_continuous(breaks = 2015:2025) +
+  geom_smooth(size = 0.6, method = "lm", se = FALSE) +
+  labs(title = "MLB Batting Average by Pitch Type (2015-2025)",
+       x = "Season",
+       y = "Batting Average",
+       color = "Pitch Type") +
+  theme_classic()
+```
